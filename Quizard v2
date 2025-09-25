@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Quizard</title>
+<style>
+  body {margin:0;font-family:Segoe UI,Arial,sans-serif;background:#f6f8fa;color:#333;}
+  header {background:#4CAF50;color:white;padding:12px;text-align:center;font-size:1.6rem;}
+  main {max-width:800px;margin:0 auto;padding:20px;}
+  button {background:#4CAF50;color:white;border:none;padding:8px 14px;margin:4px;border-radius:6px;cursor:pointer;}
+  button:hover {background:#43a047;}
+  .hidden {display:none;}
+  .deck-card {background:white;border:1px solid #ddd;border-radius:6px;padding:10px;margin:8px 0;cursor:pointer;}
+  .card {background:white;border:1px solid #ccc;border-radius:6px;padding:14px;margin:10px 0;}
+  #modal {position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;}
+  #modal form {background:white;padding:20px;border-radius:8px;max-width:400px;width:90%;}
+  input,textarea {width:100%;padding:8px;margin:6px 0;}
+</style>
+</head>
+<body>
+<header>Quizard</header>
+<main>
+
+  <!-- Home Page -->
+  <section id="home">
+    <button onclick="newDeck()">➕ New Deck</button>
+    <div id="deckList"></div>
+  </section>
+
+  <!-- Deck Page -->
+  <section id="deckPage" class="hidden">
+    <button onclick="showHome()">⬅ Back</button>
+    <h2 id="deckTitle"></h2>
+    <button onclick="openModal()">Add Card</button>
+    <button onclick="startQuiz()">Start Quiz</button>
+    <div id="cardList"></div>
+  </section>
+
+  <!-- Quiz Page -->
+  <section id="quizPage" class="hidden">
+    <button onclick="exitQuiz()">⬅ Exit Quiz</button>
+    <div id="quizContainer"></div>
+  </section>
+
+</main>
+
+<!-- Modal for adding cards -->
+<div id="modal">
+  <form onsubmit="addCard(event)">
+    <h3>Add New Card</h3>
+    <input id="qInput" placeholder="Question" required />
+    <input id="aInput" placeholder="Answer" required />
+    <button type="submit">Save</button>
+    <button type="button" onclick="closeModal()">Cancel</button>
+  </form>
+</div>
+
+<script>
+const KEY = 'quizard_v2';
+let decks = JSON.parse(localStorage.getItem(KEY) || '[]');
+let currentDeck = null;
+let quizState = { index:0, score:0, questions:[] };
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(decks)); }
+
+// ---------- Navigation ----------
+function showHome(){
+  document.getElementById('home').classList.remove('hidden');
+  document.getElementById('deckPage').classList.add('hidden');
+  document.getElementById('quizPage').classList.add('hidden');
+  renderHome();
+}
+function openDeck(i){
+  currentDeck = i;
+  document.getElementById('home').classList.add('hidden');
+  document.getElementById('deckPage').classList.remove('hidden');
+  document.getElementById('quizPage').classList.add('hidden');
+  renderDeck();
+}
+
+// ---------- Home ----------
+function renderHome(){
+  const list=document.getElementById('deckList');
+  list.innerHTML = decks.map((d,i)=>`
+    <div class="deck-card" onclick="openDeck(${i})">
+      <strong>${escapeHtml(d.name)}</strong> – ${d.cards.length} cards
+    </div>`).join('');
+}
+function newDeck(){
+  const name = prompt('Name of deck:');
+  if(!name) return;
+  decks.push({name, cards:[]});
+  save(); renderHome();
+}
+
+// ---------- Deck ----------
+function renderDeck(){
+  const deck = decks[currentDeck];
+  document.getElementById('deckTitle').textContent = deck.name;
+  const cards = deck.cards.map((c,i)=>`
+    <div class="card">
+      <strong>Q:</strong> ${escapeHtml(c.q)}<br>
+      <strong>A:</strong> ${escapeHtml(c.a)}
+      <button onclick="deleteCard(${i})">Delete</button>
+    </div>`).join('');
+  document.getElementById('cardList').innerHTML = cards || '<p>No cards yet.</p>';
+}
+function deleteCard(i){
+  if(confirm('Delete this card?')){
+    decks[currentDeck].cards.splice(i,1);
+    save(); renderDeck();
+  }
+}
+
+// ---------- Modal Add ----------
+function openModal(){ document.getElementById('modal').style.display='flex'; }
+function closeModal(){ document.getElementById('modal').style.display='none'; }
+function addCard(e){
+  e.preventDefault();
+  const q=document.getElementById('qInput').value.trim();
+  const a=document.getElementById('aInput').value.trim();
+  if(q && a){
+    decks[currentDeck].cards.push({q,a});
+    save(); renderDeck();
+  }
+  document.getElementById('qInput').value='';
+  document.getElementById('aInput').value='';
+  closeModal();
+}
+
+// ---------- Quiz ----------
+function startQuiz(){
+  const deck = decks[currentDeck];
+  if(deck.cards.length<1){ alert('No cards to quiz.'); return; }
+  quizState.index=0;
+  quizState.score=0;
+  quizState.questions = shuffle(deck.cards.slice());
+  document.getElementById('deckPage').classList.add('hidden');
+  document.getElementById('quizPage').classList.remove('hidden');
+  nextQuestion();
+}
+function nextQuestion(){
+  const qCont=document.getElementById('quizContainer');
+  if(quizState.index>=quizState.questions.length){
+    qCont.innerHTML=`<h2>Finished!</h2>
+      <p>You scored ${quizState.score} / ${quizState.questions.length}</p>`;
+    return;
+  }
+  const card = quizState.questions[quizState.index];
+  const allAnswers = shuffle([
+    card.a,
+    ...shuffle(decks[currentDeck].cards
+        .filter(c=>c!==card).map(c=>c.a)).slice(0,3)
+  ]);
+  qCont.innerHTML = `
+    <h3>Question ${quizState.index+1}</h3>
+    <p>${escapeHtml(card.q)}</p>
+    ${allAnswers.map(ans=>`<button onclick="checkAnswer('${escapeHtml(ans)}')">${escapeHtml(ans)}</button>`).join('<br>')}
+  `;
+}
+function checkAnswer(ans){
+  const card = quizState.questions[quizState.index];
+  if(ans===card.a){ quizState.score++; }
+  quizState.index++;
+  nextQuestion();
+}
+function exitQuiz(){ showHome(); }
+
+function escapeHtml(str){
+  return str.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+// ---------- Init ----------
+if(decks.length===0){
+  decks.push({name:'Sample Deck',cards:[
+    {q:'Capital of France?',a:'Paris'},
+    {q:'2 + 2 = ?',a:'4'}
+  ]});
+  save();
+}
+showHome();
+</script>
+</body>
+</html>
