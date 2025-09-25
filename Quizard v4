@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quizard</title>
+<style>
+/* --- Global --- */
+body {
+  font-family: 'Segoe UI', sans-serif;
+  margin: 0;
+  background: linear-gradient(to bottom, #a1c4fd, #c2e9fb);
+  color: #333;
+}
+header {
+  background: #ff6f61;
+  color: white;
+  font-size: 2rem;
+  padding: 15px;
+  text-align: center;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+}
+nav {
+  display: flex;
+  justify-content: center;
+  background: #ff8a65;
+}
+nav button {
+  margin: 5px;
+  padding: 10px 20px;
+  border: none;
+  background: #ffb599;
+  border-radius: 25px;
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+nav button:hover {
+  background: #ff6f61;
+  transform: scale(1.1);
+}
+
+/* --- Sections --- */
+section {
+  display: none;
+  padding: 20px;
+  min-height: 400px;
+  animation: fadeIn 0.5s;
+}
+.active { display: block; }
+
+@keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+
+/* --- Deck Cards --- */
+.card {
+  background: white;
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 15px;
+  box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+  transition: transform 0.2s;
+}
+.card:hover { transform: scale(1.03); }
+
+/* --- Buttons --- */
+button { cursor: pointer; }
+input, button { font-size: 1rem; }
+
+/* --- XP / Streak --- */
+#xpDisplay, #streakDisplay {
+  font-weight: bold;
+  margin: 10px 0;
+  font-size: 1.1rem;
+}
+
+/* --- Card Flip Animation --- */
+.flip-card {
+  background-color: transparent;
+  width: 250px;
+  height: 150px;
+  perspective: 1000px;
+  margin: auto;
+}
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+.flip-card:hover .flip-card-inner { transform: rotateY(180deg); }
+.flip-card-front, .flip-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+  backface-visibility: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.2rem;
+}
+.flip-card-front { background: #4fc3f7; color: white; }
+.flip-card-back { background: #ff8a65; color: white; transform: rotateY(180deg);}
+</style>
+</head>
+<body>
+
+<header>Quizard</header>
+<nav>
+  <button onclick="showPage('deckPage')">Decks</button>
+  <button onclick="showPage('studyPage')">Study</button>
+  <button onclick="showPage('quizPage')">Quiz</button>
+  <button onclick="showPage('storePage')">Store</button>
+</nav>
+
+<!-- Decks -->
+<section id="deckPage">
+  <h2>Decks</h2>
+  <input type="text" id="newDeckName" placeholder="New deck name">
+  <button onclick="addDeck()">Add Deck</button>
+  <div id="deckList"></div>
+</section>
+
+<!-- Study -->
+<section id="studyPage">
+  <h2 id="studyDeckName"></h2>
+  <div class="flip-card">
+    <div class="flip-card-inner" id="studyCard">
+      <div class="flip-card-front" id="cardFront">Question</div>
+      <div class="flip-card-back" id="cardBack">Answer</div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:15px;">
+    <button onclick="prevCard()">Previous</button>
+    <button onclick="nextCard()">Next</button>
+  </div>
+</section>
+
+<!-- Quiz -->
+<section id="quizPage">
+  <h2 id="quizDeckName"></h2>
+  <div id="quizQuestion" class="card">Question appears here</div>
+  <input type="text" id="quizAnswer" placeholder="Your answer">
+  <button onclick="submitQuiz()">Submit</button>
+  <div id="quizScore"></div>
+</section>
+
+<!-- Store -->
+<section id="storePage">
+  <h2>Store</h2>
+  <div id="xpDisplay">XP: 0</div>
+  <div id="storeItems"></div>
+</section>
+
+<script>
+// --- App State ---
+let state = {
+  decks: [],
+  currentDeck: null,
+  currentCardIndex:0,
+  quizCardIndex:0,
+  quizScore:0,
+  xp:0,
+  streak:0,
+  lastStreakDate:""
+};
+
+const STORE_ITEMS = [
+  {name:"Gold Badge",cost:50,desc:"Show off your 5-day streak!"},
+  {name:"Extra Quiz Attempt",cost:30,desc:"One extra quiz attempt per day"},
+  {name:"Theme Pack",cost:100,desc:"Unlock a fun theme!"}
+];
+
+// --- Storage ---
+function loadState(){ const raw=localStorage.getItem("quizard"); if(raw) state=JSON.parse(raw);}
+function saveState(){ localStorage.setItem("quizard",JSON.stringify(state));}
+
+// --- Navigation ---
+function showPage(id){
+  document.querySelectorAll("section").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="block";
+  if(id=="deckPage") renderDecks();
+  if(id=="studyPage") renderStudy();
+  if(id=="quizPage") renderQuiz();
+  if(id=="storePage") renderStore();
+}
+
+// --- Decks ---
+function addDeck(){
+  const name=document.getElementById("newDeckName").value.trim();
+  if(!name) return alert("Enter deck name");
+  state.decks.push({name,cards:[]});
+  state.currentDeck=state.decks.length-1;
+  saveState(); renderDecks();
+}
+function renderDecks(){
+  const deckList=document.getElementById("deckList");
+  deckList.innerHTML="";
+  state.decks.forEach((d,i)=>{
+    const div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`<b>${d.name}</b> <button onclick="selectDeck(${i})">Select</button>`;
+    deckList.appendChild(div);
+  });
+}
+function selectDeck(i){ state.currentDeck=i; state.currentCardIndex=0; alert(`Deck "${state.decks[i].name}" selected`); }
+
+// --- Study ---
+function renderStudy(){
+  if(state.currentDeck===null){ document.getElementById("cardFront").innerText="Select a deck first"; return; }
+  const deck=state.decks[state.currentDeck];
+  document.getElementById("studyDeckName").innerText=deck.name;
+  renderCurrentCard();
+}
+function renderCurrentCard(){
+  const deck=state.decks[state.currentDeck];
+  if(deck.cards.length==0){ document.getElementById("cardFront").innerText="No cards yet"; document.getElementById("cardBack").innerText=""; return;}
+  document.getElementById("cardFront").innerText=deck.cards[state.currentCardIndex].question;
+  document.getElementById("cardBack").innerText=deck.cards[state.currentCardIndex].answer;
+}
+function nextCard(){ const deck=state.decks[state.currentDeck]; if(deck.cards.length==0) return; state.currentCardIndex=(state.currentCardIndex+1)%deck.cards.length; renderCurrentCard();}
+function prevCard(){ const deck=state.decks[state.currentDeck]; if(deck.cards.length==0) return; state.currentCardIndex=(state.currentCardIndex-1+deck.cards.length)%deck.cards.length; renderCurrentCard();}
+
+// --- Quiz ---
+function renderQuiz(){ if(state.currentDeck===null){ document.getElementById("quizQuestion").innerText="Select a deck first"; return;}
+  state.quizCardIndex=0; state.quizScore=0;
+  document.getElementById("quizDeckName").innerText=state.decks[state.currentDeck].name;
+  showQuizQuestion();
+}
+function showQuizQuestion(){ const deck=state.decks[state.currentDeck];
+  if(state.quizCardIndex>=deck.cards.length){ alert(`Quiz complete! Score: ${state.quizScore}`); updateDailyStreak(); state.xp+=state.quizScore*5; saveState(); renderStore(); showPage('deckPage'); return;}
+  document.getElementById("quizQuestion").innerText=deck.cards[state.quizCardIndex].question;
+}
+function submitQuiz(){ const deck=state.decks[state.currentDeck]; const ans=document.getElementById("quizAnswer").value.trim();
+  if(ans.toLowerCase()==deck.cards[state.quizCardIndex].answer.toLowerCase()) state.quizScore++;
+  state.quizCardIndex++; document.getElementById("quizAnswer").value=""; showQuizQuestion();}
+
+// --- Daily Streak ---
+function updateDailyStreak(){ const today=new Date().toISOString().slice(0,10);
+  if(state.lastStreakDate!==today){ state.streak++; state.lastStreakDate=today; state.xp+=10; alert(`Daily streak +1! Current streak: ${state.streak}`); saveState(); renderStore(); }
+}
+
+// --- Store ---
+function renderStore(){ document.getElementById("xpDisplay").innerText=`XP: ${state.xp}`;
+  const div=document.getElementById("storeItems"); div.innerHTML="";
+  STORE_ITEMS.forEach((item,i)=>{
+    const c=document.createElement("div"); c.className="card";
+    c.innerHTML=`<b>${item.name}</b> - ${item.cost} XP<br>${item.desc} <button onclick="buyItem(${i})">Buy</button>`;
+    div.appendChild(c);
+  });
+}
+function buyItem(i){ const item=STORE_ITEMS[i]; if(state.xp>=item.cost){ state.xp-=item.cost; alert(`You bought: ${item.name}`); saveState(); renderStore(); } else alert("Not enough XP"); }
+
+// --- Init ---
+loadState(); showPage("deckPage");
+</script>
+
+</body>
+</html>
