@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FlashQuiz — Flashcards & Quizzes</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+      --radius:12px; --gap:14px; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; background:linear-gradient(180deg,#071023 0%, #081426 60%); color:#e6eef6; min-height:100vh; padding:28px;}
+    .app{max-width:980px;margin:0 auto;display:grid;grid-template-columns:320px 1fr;gap:20px;}
+    header{grid-column:1/-1; display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+    h1{font-size:20px;margin:0}
+    .subtitle{color:var(--muted);font-size:13px}
+    .panel{background:linear-gradient(180deg,var(--card), #07101a); padding:14px;border-radius:var(--radius); box-shadow: 0 4px 18px rgba(0,0,0,0.5);}
+    .sidebar .controls{display:flex;gap:8px;margin-bottom:10px}
+    button{background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:8px 10px;border-radius:10px;color:inherit;cursor:pointer}
+    button.primary{background:linear-gradient(90deg,var(--accent), #0ea5a2); color:#021018; font-weight:600}
+    .deck-list{display:flex;flex-direction:column;gap:8px;max-height:65vh;overflow:auto;padding-right:6px}
+    .deck-item{padding:10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+    .deck-item.active{outline:2px solid rgba(6,182,212,0.12);background:rgba(6,182,212,0.04)}
+    .small{font-size:12px;color:var(--muted)}
+    .main{display:flex;flex-direction:column;gap:12px}
+    .row{display:flex;gap:12px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type="text"],textarea,select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    textarea{min-height:80px;resize:vertical}
+    .card{padding:18px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));min-height:140px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+    .flash-text{font-size:20px}
+    .controls-inline{display:flex;gap:8px;align-items:center}
+    .muted{color:var(--muted)}
+    .bottom-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .stats{font-size:13px;color:var(--muted)}
+    .list{display:flex;flex-direction:column;gap:6px}
+    .card-row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .danger{background:rgba(255,80,80,0.12);border:1px solid rgba(255,80,80,0.12);color:#ff9b9b}
+    @media (max-width:880px){
+      .app{grid-template-columns:1fr; padding:12px}
+      .sidebar{order:2}
+      .main{order:1}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>FlashQuiz</h1>
+        <div class="subtitle">Create quizzes & digital flashcards — quick, offline, and exportable</div>
+      </div>
+      <div class="small">Local-only demo • Export to JSON for backup</div>
+    </header>
+
+    <aside class="panel sidebar">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>Decks</strong>
+        <div class="small muted" id="deck-count">0</div>
+      </div>
+      <div class="controls">
+        <input id="new-deck-name" placeholder="New deck name" />
+        <button id="create-deck" class="primary">Create</button>
+      </div>
+
+      <div class="deck-list" id="decks"></div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;flex-direction:column">
+        <button id="export-all">Export All Decks</button>
+        <input id="import-file" type="file" accept="application/json" />
+        <div class="small muted">Import overwrites decks with the same id.</div>
+      </div>
+    </aside>
+
+    <main class="panel main">
+      <div id="no-deck" class="muted">Create a deck to get started.</div>
+
+      <div id="deck-area" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div>
+            <h2 id="deck-title" style="margin:0">Untitled</h2>
+            <div class="small muted" id="deck-sub">0 cards</div>
+          </div>
+          <div class="controls-inline">
+            <button id="add-card-btn">+ Add Card</button>
+            <button id="study-btn" class="primary">Study</button>
+            <button id="quiz-btn">Quiz</button>
+            <button id="delete-deck" class="danger">Delete</button>
+          </div>
+        </div>
+
+        <section id="manage-cards">
+          <div style="display:flex;gap:12px;margin-top:12px">
+            <div style="flex:1">
+              <label>Cards in deck</label>
+              <div class="list" id="cards-list"></div>
+            </div>
+            <div style="width:320px">
+              <label>Add / Edit Card</label>
+              <input id="card-question" placeholder="Question or prompt" />
+              <textarea id="card-answer" placeholder="Answer or explanation"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="save-card" class="primary">Save Card</button>
+                <button id="cancel-edit">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="study-mode" style="display:none;margin-top:12px">
+          <div class="card" id="flashcard">
+            <div class="flash-text" id="flash-text">No card</div>
+            <div class="small muted" id="flash-side">Question</div>
+          </div>
+          <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">
+            <button id="flip-btn">Flip</button>
+            <button id="prev-card">Prev</button>
+            <button id="next-card" class="primary">Next</button>
+            <button id="mark-known">Mark Known</button>
+            <div class="stats" id="study-stats"></div>
+          </div>
+        </section>
+
+        <section id="quiz-mode" style="display:none;margin-top:12px">
+          <div class="card" id="quiz-card">
+            <div class="flash-text" id="quiz-question">Question will appear here</div>
+            <div class="small muted" id="quiz-sub">Choose the correct answer</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px" id="quiz-options"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <div class="stats" id="quiz-stats">0 / 0</div>
+            <div>
+              <button id="quiz-reset">Reset Quiz</button>
+              <button id="end-quiz" class="danger">End Quiz</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    /***********************
+     * Simple FlashQuiz App
+     * Single-file app using localStorage
+     ***********************/
+
+    // Utilities
+    const STORAGE_KEY = 'flashquiz.decks.v1';
+    const uid = (n=6)=>Math.random().toString(36).slice(2,2+n);
+
+    // App state
+    let decks = {}; // id -> {id,name,cards: [{id,question,answer}]}
+    let selectedDeckId = null;
+    let editingCardId = null;
+
+    // Quiz / Study state
+    let studyIndex = 0, studySide = 'q', studyKnown = new Set();
+    let quizQueue = [], quizIndex = 0, quizCorrect = 0;
+
+    // Elements
+    const decksEl = document.getElementById('decks');
+    const deckCountEl = document.getElementById('deck-count');
+    const createBtn = document.getElementById('create-deck');
+    const newDeckNameInput = document.getElementById('new-deck-name');
+    const deckArea = document.getElementById('deck-area');
+    const noDeckEl = document.getElementById('no-deck');
+    const deckTitle = document.getElementById('deck-title');
+    const deckSub = document.getElementById('deck-sub');
+    const addCardBtn = document.getElementById('add-card-btn');
+    const cardsListEl = document.getElementById('cards-list');
+    const cardQuestionInput = document.getElementById('card-question');
+    const cardAnswerInput = document.getElementById('card-answer');
+    const saveCardBtn = document.getElementById('save-card');
+    const cancelEditBtn = document.getElementById('cancel-edit');
+    const studyBtn = document.getElementById('study-btn');
+    const quizBtn = document.getElementById('quiz-btn');
+    const deleteDeckBtn = document.getElementById('delete-deck');
+
+    const studyModeEl = document.getElementById('study-mode');
+    const flashText = document.getElementById('flash-text');
+    const flashSide = document.getElementById('flash-side');
+    const flipBtn = document.getElementById('flip-btn');
+    const prevCardBtn = document.getElementById('prev-card');
+    const nextCardBtn = document.getElementById('next-card');
+    const markKnownBtn = document.getElementById('mark-known');
+    const studyStats = document.getElementById('study-stats');
+
+    const quizModeEl = document.getElementById('quiz-mode');
+    const quizQuestionEl = document.getElementById('quiz-question');
+    const quizOptionsEl = document.getElementById('quiz-options');
+    const quizStatsEl = document.getElementById('quiz-stats');
+    const quizResetBtn = document.getElementById('quiz-reset');
+    const endQuizBtn = document.getElementById('end-quiz');
+
+    const exportAllBtn = document.getElementById('export-all');
+    const importFileInput = document.getElementById('import-file');
+
+    // Persistence
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw) decks = JSON.parse(raw) || {};
+      } catch(e) { decks = {}; }
+    }
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(decks));
+    }
+
+    // UI render
+    function renderDeckList() {
+      decksEl.innerHTML = '';
+      const keys = Object.keys(decks).sort((a,b)=>decks[a].name.localeCompare(decks[b].name));
+      deckCountEl.textContent = keys.length;
+      if(keys.length===0) { selectedDeckId = null; showNoDeck(); return; }
+      keys.forEach(id=>{
+        const d = decks[id];
+        const el = document.createElement('div');
+        el.className = 'deck-item' + (id===selectedDeckId ? ' active' : '');
+        el.innerHTML = `<div style="display:flex;flex-direction:column">
+                          <strong style="font-size:14px">${escapeHtml(d.name)}</strong>
+                          <div class="small muted">${d.cards.length} cards</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center">
+                          <button data-id="${id}" class="open">Open</button>
+                        </div>`;
+        el.querySelector('.open').addEventListener('click',()=>selectDeck(id));
+        decksEl.appendChild(el);
+      });
+    }
+
+    function showNoDeck() {
+      noDeckEl.style.display='block';
+      deckArea.style.display='none';
+    }
+
+    function selectDeck(id) {
+      selectedDeckId = id;
+      render();
+    }
+
+    function render() {
+      renderDeckList();
+      if(!selectedDeckId || !decks[selectedDeckId]) { showNoDeck(); return; }
+      noDeckEl.style.display='none';
+      deckArea.style.display='block';
+      const d = decks[selectedDeckId];
+      deckTitle.textContent = d.name;
+      deckSub.textContent = `${d.cards.length} card${d.cards.length===1?'':'s'}`;
+      // Reset edit fields
+      editingCardId = null;
+      cardQuestionInput.value = '';
+      cardAnswerInput.value = '';
+      // Cards list
+      cardsListEl.innerHTML = '';
+      if(d.cards.length===0) cardsListEl.innerHTML = `<div class="muted">No cards yet. Add one!</div>`;
+      d.cards.forEach(c=>{
+        const row = document.createElement('div');
+        row.className = 'card-row';
+        row.innerHTML = `<div style="flex:1"><strong>${escapeHtml(c.question||'Untitled')}</strong><div class="small muted">${escapeHtml(c.answer||'')}</div></div>
+                         <div style="display:flex;gap:6px">
+                           <button data-id="${c.id}" class="edit small">Edit</button>
+                           <button data-id="${c.id}" class="del small danger">Delete</button>
+                         </div>`;
+        row.querySelector('.edit').addEventListener('click',()=>startEditCard(c.id));
+        row.querySelector('.del').addEventListener('click',()=>{
+          if(!confirm('Delete this card?')) return;
+          deleteCard(c.id);
+        });
+        cardsListEl.appendChild(row);
+      });
+
+      // Hide both study & quiz by default
+      studyModeEl.style.display='none';
+      quizModeEl.style.display='none';
+      // reset study/quiz state
+      studyIndex = 0; studySide='q'; studyKnown = new Set();
+      quizQueue = []; quizIndex = 0; quizCorrect = 0;
+
+    }
+
+    // Card operations
+    function startEditCard(cardId) {
+      const d = decks[selectedDeckId];
+      const c = d.cards.find(x=>x.id===cardId);
+      if(!c) return;
+      editingCardId = c.id;
+      cardQuestionInput.value = c.question;
+      cardAnswerInput.value = c.answer;
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function saveCard() {
+      if(!selectedDeckId) return alert('Select a deck first.');
+      const q = cardQuestionInput.value.trim();
+      const a = cardAnswerInput.value.trim();
+      if(!q || !a) return alert('Both question and answer are required.');
+      const d = decks[selectedDeckId];
+      if(editingCardId) {
+        const idx = d.cards.findIndex(x=>x.id===editingCardId);
+        if(idx>=0) { d.cards[idx].question = q; d.cards[idx].answer = a; }
+      } else {
+        const newCard = {id: 'c_'+uid(8), question:q, answer:a};
+        d.cards.push(newCard);
+      }
+      save();
+      render();
+    }
+
+    function cancelEdit() {
+      editingCardId = null;
+      cardQuestionInput.value=''; cardAnswerInput.value='';
+    }
+
+    function deleteCard(cardId) {
+      const d = decks[selectedDeckId];
+      d.cards = d.cards.filter(x=>x.id!==cardId);
+      save();
+      render();
+    }
+
+    // Deck ops
+    function createDeck() {
+      const name = newDeckNameInput.value.trim() || 'Untitled Deck';
+      const id = 'd_' + uid(8);
+      decks[id] = {id,name,cards:[]};
+      save();
+      newDeckNameInput.value='';
+      selectDeck(id);
+      render();
+    }
+
+    function deleteDeck() {
+      if(!selectedDeckId) return;
+      if(!confirm('Delete this deck permanently?')) return;
+      delete decks[selectedDeckId];
+      selectedDeckId = null;
+      save();
+      render();
+    }
+
+    // Study mode
+    function startStudy() {
+      if(!selectedDeckId) return;
+      const d = decks[selectedDeckId];
+      if(d.cards.length===0) return alert('Add some cards first.');
+      studyModeEl.style.display='block'; quizModeEl.style.display='none';
+      studyIndex = 0; studySide='q'; studyKnown = new Set();
+      renderStudyCard();
+    }
+
+    function renderStudyCard() {
+      const d = decks[selectedDeckId];
+      if(!d || d.cards.length===0) return;
+      const c = d.cards[studyIndex];
+      flashText.textContent = studySide === 'q' ? c.question : c.answer;
+      flashSide.textContent = studySide === 'q' ? 'Question' : 'Answer';
+      studyStats.textContent = `Card ${studyIndex+1} / ${d.cards.length} • Known: ${studyKnown.size}`;
+    }
+
+    function flipCard() {
+      studySide = studySide === 'q' ? 'a' : 'q';
+      renderStudyCard();
+    }
+
+    function prevCard() {
+      const d = decks[selectedDeckId];
+      if(d.cards.length===0) return;
+      studyIndex = (studyIndex - 1 + d.cards.length) % d.cards.length;
+      studySide='q';
+      renderStudyCard();
+    }
+
+    function nextCard() {
+      const d = decks[selectedDeckId];
+      if(d.cards.length===0) return;
+      studyIndex = (studyIndex + 1) % d.cards.length;
+      studySide='q';
+      renderStudyCard();
+    }
+
+    function markKnown() {
+      const d = decks[selectedDeckId];
+      const id = d.cards[studyIndex].id;
+      if(studyKnown.has(id)) studyKnown.delete(id); else studyKnown.add(id);
+      studyStats.textContent = `Card ${studyIndex+1} / ${d.cards.length} • Known: ${studyKnown.size}`;
+    }
+
+    // Quiz mode
+    function startQuiz() {
+      if(!selectedDeckId) return;
+      const d = decks[selectedDeckId];
+      if(d.cards.length < 2) return alert('Quiz requires at least 2 cards for choices.');
+      quizModeEl.style.display='block'; studyModeEl.style.display='none';
+      // Generate randomized queue
+      quizQueue = shuffleArray(d.cards.map(c=>c.id));
+      quizIndex = 0; quizCorrect = 0;
+      renderQuizQuestion();
+    }
+
+    function renderQuizQuestion() {
+      const d = decks[selectedDeckId];
+      if(!d || quizIndex >= quizQueue.length) {
+        // finished
+        quizQuestionEl.textContent = 'Quiz complete!';
+        quizOptionsEl.innerHTML = `<div class="small muted">You got ${quizCorrect} / ${quizQueue.length} correct.</div>`;
+        quizStatsEl.textContent = `${quizCorrect} / ${quizQueue.length}`;
+        return;
+      }
+      const currentId = quizQueue[quizIndex];
+      const card = d.cards.find(x=>x.id===currentId);
+      quizQuestionEl.textContent = card.question;
+      // build options: correct + 3 distractors (or fewer if deck small)
+      const others = d.cards.filter(x=>x.id !== currentId);
+      const choices = [card.answer];
+      shuffleArray(others);
+      for(let i=0;i<3 && i<others.length;i++) choices.push(others[i].answer);
+      shuffleArray(choices);
+      quizOptionsEl.innerHTML = '';
+      choices.forEach(opt=>{
+        const btn = document.createElement('button');
+        btn.textContent = opt;
+        btn.style.textAlign='left';
+        btn.addEventListener('click',()=>{
+          const correct = opt === card.answer;
+          if(correct) quizCorrect++;
+          // show feedback briefly
+          Array.from(quizOptionsEl.children).forEach(b=>b.disabled=true);
+          btn.textContent = (correct ? '✓ ' : '✕ ') + btn.textContent;
+          setTimeout(()=>{ quizIndex++; renderQuizQuestion(); }, 700);
+          quizStatsEl.textContent = `${quizCorrect} / ${quizQueue.length}`;
+        });
+        quizOptionsEl.appendChild(btn);
+      });
+      quizStatsEl.textContent = `${quizCorrect} / ${quizQueue.length}`;
+    }
+
+    function resetQuiz() {
+      if(!selectedDeckId) return;
+      startQuiz();
+    }
+
+    function endQuiz() {
+      quizModeEl.style.display='none';
+      quizQueue = []; quizIndex = 0; quizCorrect = 0;
+    }
+
+    // Export / Import
+    function exportAll() {
+      const dataStr = JSON.stringify(decks, null, 2);
+      const blob = new Blob([dataStr], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'flashquiz-decks.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function importFile(file) {
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          // merge: overwrite decks with same id
+          Object.keys(imported).forEach(k=>decks[k]=imported[k]);
+          save();
+          render();
+          alert('Import complete.');
+        } catch(err){
+          alert('Invalid JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Helpers
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+    function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
+
+    // Wire up events
+    createBtn.addEventListener('click', createDeck);
+    newDeckNameInput.addEventListener('keydown', e=>{ if(e.key==='Enter') createDeck(); });
+    addCardBtn.addEventListener('click', ()=>{ window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); cardQuestionInput.focus(); });
+    saveCardBtn.addEventListener('click', saveCard);
+    cancelEditBtn.addEventListener('click', cancelEdit);
+    studyBtn.addEventListener('click', startStudy);
+    flipBtn.addEventListener('click', flipCard);
+    prevCardBtn.addEventListener('click', prevCard);
+    nextCardBtn.addEventListener('click', nextCard);
+    markKnownBtn.addEventListener('click', markKnown);
+    quizBtn.addEventListener('click', startQuiz);
+    quizResetBtn.addEventListener('click', resetQuiz);
+    endQuizBtn.addEventListener('click', endQuiz);
+    deleteDeckBtn.addEventListener('click', deleteDeck);
+    exportAllBtn.addEventListener('click', exportAll);
+    importFileInput.addEventListener('change', e=>importFile(e.target.files[0]));
+
+    // initial load
+    load();
+    // if no decks, create a sample deck to demonstrate
+    if(Object.keys(decks).length===0){
+      const sampleId = 'd_sample';
+      decks[sampleId] = {
+        id: sampleId,
+        name: 'Sample: Spanish Basics',
+        cards: [
+          {id:'c1', question:'Hello', answer:'Hola'},
+          {id:'c2', question:'Thank you', answer:'Gracias'},
+          {id:'c3', question:'Goodbye', answer:'Adiós'}
+        ]
+      };
+      save();
+    }
+    render();
+
+  </script>
+</body>
+</html>
+
